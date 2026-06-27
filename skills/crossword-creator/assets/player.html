@@ -71,10 +71,15 @@
   ol li .n{font-weight:700;min-width:22px;text-align:right;color:var(--muted)}
   ol li.active .n{color:var(--accent)}
 
-  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
-         background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;
-         opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:10}
-  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .cell.right .ltr{color:#2e7d54}          /* checked & correct */
+  #win{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+       background:rgba(26,23,20,.45);z-index:20}
+  #win.show{display:flex}
+  #win .card{background:var(--panel);border:1px solid #d8d0c0;border-radius:14px;
+       padding:26px 40px;text-align:center;box-shadow:0 24px 70px rgba(0,0,0,.28)}
+  #win .card h2{margin:0 0 4px;font-size:28px;color:var(--accent)}
+  #win .card p{margin:0 0 18px;color:var(--muted);font-size:16px}
+  #win .card button{font-size:15px;padding:8px 24px}
 
   #loader{margin:40px auto;max-width:520px;padding:20px;background:var(--panel);
           border:1px solid #ddd;border-radius:10px}
@@ -87,7 +92,6 @@
     .clues{width:100%;max-width:560px}
     ol{max-height:34vh}
   }
-  @media (prefers-reduced-motion:reduce){#toast{transition:none}}
 </style>
 </head>
 <body>
@@ -124,7 +128,11 @@
       <div class="clue-col"><h2>Down</h2><ol id="downList"></ol></div>
     </aside>
   </main>
-  <div id="toast"></div>
+  <div id="win"><div class="card">
+    <h2>🎉 Solved!</h2>
+    <p id="winTitle"></p>
+    <button id="winClose">Nice</button>
+  </div></div>
 
 <script>
 let KEY = "xword-progress";
@@ -142,7 +150,7 @@ function loadData(data){
   DOWN = P.clues.down.slice().sort((a,b)=>a.num-b.num);
   document.getElementById("title").textContent = P.title || "Crossword";
   document.getElementById("meta").textContent =
-      [P.theme, P.difficulty, (ACROSS.length+DOWN.length)+" words"].filter(Boolean).join(" · ");
+      [P.theme, P.difficulty].filter(Boolean).join(" · ");
   document.documentElement.style.setProperty("--n", N);
   indexCells(); restore();
   buildGrid(); buildClueLists(); fitGrid();
@@ -238,7 +246,7 @@ function paint(){
 
 function setLetter(r,c,ch){
   if(ch) user[r+","+c]=ch; else delete user[r+","+c];
-  const d=cell(r,c); if(d){ d.querySelector(".ltr").textContent=ch; d.classList.remove("wrong"); }
+  const d=cell(r,c); if(d){ d.querySelector(".ltr").textContent=ch; d.classList.remove("wrong","right"); }
   save();
 }
 function entryCells(e,dir){
@@ -308,41 +316,45 @@ addEventListener("keydown",ev=>{
     const e=activeEntry();
     if(e && isFilled(e,sel.dir)) gotoNextUnfilled();   // word done → jump onward
     else step(true);
+    checkWin();
     return; }
 });
 
 document.getElementById("prevClue").onclick=()=>gotoAdjacentClue(-1);
 document.getElementById("nextClue").onclick=()=>gotoAdjacentClue(1);
 
-let toastT;
-function toast(msg){
-  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
-  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove("show"),2600);
+function isSolved(){
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++)
+    if(GRID[r][c]!==null && (user[r+","+c]||"")!==GRID[r][c]) return false;
+  return true;
 }
+let won=false;
+function checkWin(){ if(!won && isSolved()){ won=true;
+  document.getElementById("winTitle").textContent = P.title || "";
+  document.getElementById("win").classList.add("show"); } }
+
+// Check marks the grid itself — red slash on wrong letters, green on correct —
+// the way solvers expect. No message popup.
 document.getElementById("bCheck").onclick=()=>{
-  let wrong=0, filled=0, total=0;
   for(let r=0;r<N;r++)for(let c=0;c<N;c++){
-    if(GRID[r][c]===null)continue; total++;
-    const d=cell(r,c), v=user[r+","+c]||""; d.classList.remove("wrong");
-    if(v)filled++;
-    if(v&&v!==GRID[r][c]){d.classList.add("wrong");wrong++;}
+    if(GRID[r][c]===null)continue;
+    const d=cell(r,c), v=user[r+","+c]||""; d.classList.remove("wrong","right");
+    if(v) d.classList.add(v===GRID[r][c] ? "right" : "wrong");
   }
-  if(filled===total&&wrong===0) toast("🎉 Solved — every square is correct!");
-  else if(wrong===0) toast(`So far so good — ${total-filled} square${total-filled===1?"":"s"} left.`);
-  else toast(`${wrong} incorrect square${wrong===1?"":"s"} marked.`);
+  checkWin();
 };
 document.getElementById("bReveal").onclick=()=>{
   if(!confirm("Reveal the full solution?"))return;
+  won=true;                                  // revealing isn't solving — skip the celebration
   for(let r=0;r<N;r++)for(let c=0;c<N;c++) if(GRID[r][c]!==null) setLetter(r,c,GRID[r][c]);
-  toast("Solution revealed.");
 };
 document.getElementById("bClear").onclick=()=>{
   if(!confirm("Clear all your answers?"))return;
-  user={}; save();
+  user={}; won=false; save();
   document.querySelectorAll(".cell .ltr").forEach(s=>s.textContent="");
-  document.querySelectorAll(".cell").forEach(d=>d.classList.remove("wrong"));
-  toast("Cleared.");
+  document.querySelectorAll(".cell").forEach(d=>d.classList.remove("wrong","right"));
 };
+document.getElementById("winClose").onclick=()=>document.getElementById("win").classList.remove("show");
 
 function save(){try{localStorage.setItem(KEY,JSON.stringify(user));}catch(e){}}
 function restore(){try{const s=localStorage.getItem(KEY); user=s?JSON.parse(s):{};}catch(e){user={};}}
