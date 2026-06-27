@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Austen's Leading Hearts — crossword</title>
+<style>
+  :root{
+    --cell: 38px; --line:#222; --black:#1a1a1a; --hl:#a7d8ff; --cur:#ffd54a;
+    --ink:#111; --accent:#7a1f2b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Georgia,'Times New Roman',serif;color:var(--ink);
+       background:#f7f5f0;display:flex;justify-content:center;padding:24px}
+  .wrap{max-width:980px;width:100%}
+  header h1{margin:0 0 2px;font-size:26px;letter-spacing:.5px}
+  header .meta{color:#555;font-size:14px;margin-bottom:14px;font-style:italic}
+  .layout{display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start}
+  .board{flex:0 0 auto}
+  #grid{display:grid;grid-template-columns:repeat(15,var(--cell));
+        grid-template-rows:repeat(15,var(--cell));
+        border:3px solid var(--line);width:max-content;background:var(--line);gap:1px}
+  .cell{position:relative;background:#fff;display:flex;align-items:center;
+        justify-content:center;font-size:20px;font-weight:600;cursor:pointer;
+        user-select:none;text-transform:uppercase}
+  .cell.black{background:var(--black);cursor:default}
+  .cell.hl{background:var(--hl)}
+  .cell.cur{background:var(--cur)}
+  .cell .num{position:absolute;top:1px;left:2px;font-size:9px;font-weight:700;
+             font-family:Arial,sans-serif;color:#333;line-height:1}
+  .cell.wrong{color:#c0142c}
+  .cell.wrong::after{content:"";position:absolute;inset:0;
+             background:linear-gradient(to top right,transparent 47%,#c0142c 48%,#c0142c 52%,transparent 53%)}
+  .controls{margin:12px 0 4px;display:flex;gap:8px;flex-wrap:wrap}
+  button{font:inherit;font-size:14px;padding:7px 12px;border:1px solid #bbb;
+         background:#fff;border-radius:6px;cursor:pointer}
+  button:hover{background:#f0ece2}
+  #status{min-height:20px;font-size:14px;color:var(--accent);font-weight:bold}
+  .cur-clue{background:#fff;border:1px solid #ddd;border-radius:6px;padding:10px 12px;
+            margin-bottom:10px;font-size:16px;min-height:22px}
+  .cur-clue b{color:var(--accent)}
+  .clues{flex:1 1 260px;display:flex;gap:24px;flex-wrap:wrap}
+  .clue-col{flex:1 1 240px;min-width:220px}
+  .clue-col h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;
+               border-bottom:2px solid var(--line);padding-bottom:4px}
+  ol{list-style:none;margin:0;padding:0;font-size:14px}
+  ol li{display:flex;gap:8px;padding:3px 6px;border-radius:4px;cursor:pointer;line-height:1.3}
+  ol li:hover{background:#efeae0}
+  ol li.active{background:var(--hl)}
+  ol li .n{font-weight:700;min-width:20px;text-align:right}
+  #loader{padding:20px;background:#fff;border:1px solid #ddd;border-radius:8px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Austen's Leading Hearts</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div id="loader" class="hidden">
+    <p>Couldn't auto-load <code>crossword.json</code> (this happens when you open the
+       file directly without a local server). Pick the file to continue:</p>
+    <input type="file" id="file" accept="application/json,.json">
+    <p style="color:#777;font-size:13px">Tip: or run
+       <code>python3 -m http.server</code> in this folder and open
+       <code>localhost:8000</code>.</p>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="layout">
+      <div class="board">
+        <div class="cur-clue" id="curClue"></div>
+        <div id="grid" tabindex="0"></div>
+        <div class="controls">
+          <button id="bDir">Toggle direction</button>
+          <button id="bCheck">Check</button>
+          <button id="bReveal">Reveal all</button>
+          <button id="bClear">Clear</button>
+        </div>
+        <div id="status"></div>
+      </div>
+      <div class="clues">
+        <div class="clue-col"><h2>Across</h2><ol id="acrossList"></ol></div>
+        <div class="clue-col"><h2>Down</h2><ol id="downList"></ol></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let KEY = "xword-progress";   // set per-puzzle from the title once data loads
+let P, N, GRID, NUMS, ACROSS, DOWN;
+let cellOf = {};        // "r,c" -> {acrossEntry, downEntry}
+let entries = {across:{}, down:{}};   // num -> entry
+let user = {};          // "r,c" -> letter
+let sel = {r:0, c:0, dir:"across"};
+
+function loadData(data){
+  P = data; N = P.size.rows;
+  KEY = "xword:" + (P.title || "untitled");   // per-puzzle saved progress
+  GRID = P.grid; NUMS = P.gridnums;
+  ACROSS = P.clues.across; DOWN = P.clues.down;
+  document.getElementById("title").textContent = P.title;
+  document.getElementById("meta").textContent =
+      (P.theme ? P.theme + " · " : "") + (P.difficulty||"") + " · " +
+      (ACROSS.length+DOWN.length) + " words";
+  indexCells();
+  restore();
+  buildGrid();
+  buildClueLists();
+  document.getElementById("loader").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+  // first non-black cell
+  outer: for(let r=0;r<N;r++) for(let c=0;c<N;c++) if(GRID[r][c]!==null){selectCell(r,c,"across");break outer;}
+}
+
+function indexCells(){
+  for(const e of ACROSS){ entries.across[e.num]=e;
+    for(let i=0;i<e.len;i++){ const k=e.row+","+(e.col+i);
+      (cellOf[k]=cellOf[k]||{}).acrossEntry=e; } }
+  for(const e of DOWN){ entries.down[e.num]=e;
+    for(let i=0;i<e.len;i++){ const k=(e.row+i)+","+e.col;
+      (cellOf[k]=cellOf[k]||{}).downEntry=e; } }
+}
+
+function buildGrid(){
+  const g=document.getElementById("grid"); g.innerHTML="";
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const d=document.createElement("div");
+    d.className="cell"+(GRID[r][c]===null?" black":"");
+    d.dataset.r=r; d.dataset.c=c;
+    if(GRID[r][c]!==null){
+      if(NUMS[r][c]){const s=document.createElement("span");s.className="num";s.textContent=NUMS[r][c];d.appendChild(s);}
+      const t=document.createElement("span");t.className="ltr";t.textContent=user[r+","+c]||"";d.appendChild(t);
+      d.addEventListener("click",()=>{
+        if(sel.r===r&&sel.c===c) toggleDir(); else selectCell(r,c,sel.dir);
+      });
+    }
+    g.appendChild(d);
+  }
+  paint();
+}
+
+function buildClueLists(){
+  for(const [listId,arr,dir] of [["acrossList",ACROSS,"across"],["downList",DOWN,"down"]]){
+    const ol=document.getElementById(listId); ol.innerHTML="";
+    for(const e of arr){
+      const li=document.createElement("li");
+      li.dataset.num=e.num; li.dataset.dir=dir;
+      li.innerHTML=`<span class="n">${e.num}</span><span>${escapeHtml(e.clue)}</span>`;
+      li.addEventListener("click",()=>selectCell(e.row,e.col,dir));
+      ol.appendChild(li);
+    }
+  }
+}
+function escapeHtml(s){return s.replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));}
+
+function activeEntry(){
+  const k=sel.r+","+sel.c, info=cellOf[k]||{};
+  return sel.dir==="across"? info.acrossEntry : info.downEntry;
+}
+function selectCell(r,c,dir){
+  if(GRID[r][c]===null) return;
+  const info=cellOf[r+","+c]||{};
+  if(dir==="across"&&!info.acrossEntry) dir="down";
+  if(dir==="down"&&!info.downEntry) dir="across";
+  sel={r,c,dir}; paint(); document.getElementById("grid").focus();
+}
+function toggleDir(){
+  const info=cellOf[sel.r+","+sel.c]||{};
+  const other=sel.dir==="across"?"down":"across";
+  if((other==="across"&&info.acrossEntry)||(other==="down"&&info.downEntry)) sel.dir=other;
+  paint();
+}
+
+function paint(){
+  const cells=document.querySelectorAll(".cell");
+  cells.forEach(d=>d.classList.remove("hl","cur"));
+  const e=activeEntry();
+  if(e){
+    for(let i=0;i<e.len;i++){
+      const r=sel.dir==="across"?e.row:e.row+i, c=sel.dir==="across"?e.col+i:e.col;
+      cell(r,c)?.classList.add("hl");
+    }
+  }
+  cell(sel.r,sel.c)?.classList.add("cur");
+  // current clue banner + active clue in list
+  document.querySelectorAll("ol li").forEach(li=>li.classList.remove("active"));
+  if(e){
+    document.getElementById("curClue").innerHTML=
+      `<b>${e.num} ${sel.dir.toUpperCase()}</b> &nbsp; ${escapeHtml(e.clue)}`;
+    const li=document.querySelector(`ol li[data-num="${e.num}"][data-dir="${sel.dir}"]`);
+    if(li){li.classList.add("active"); li.scrollIntoView({block:"nearest"});}
+  }
+}
+function cell(r,c){return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);}
+function setLetter(r,c,ch){
+  user[r+","+c]=ch;
+  const d=cell(r,c); if(d){d.querySelector(".ltr").textContent=ch; d.classList.remove("wrong");}
+  save();
+}
+
+function step(forward=true){
+  const e=activeEntry(); if(!e) return;
+  let i = sel.dir==="across" ? sel.c-e.col : sel.r-e.row;
+  i += forward?1:-1;
+  if(i<0||i>=e.len) return;
+  sel.r = sel.dir==="across"? e.row : e.row+i;
+  sel.c = sel.dir==="across"? e.col+i : e.col;
+  paint();
+}
+function move(dr,dc){
+  let r=sel.r+dr, c=sel.c+dc;
+  while(r>=0&&r<N&&c>=0&&c<N){ if(GRID[r][c]!==null){selectCell(r,c,sel.dir);return;} r+=dr;c+=dc; }
+}
+
+document.addEventListener("keydown",ev=>{
+  if(document.getElementById("app").classList.contains("hidden")) return;
+  const k=ev.key;
+  if(k===" "){ev.preventDefault();toggleDir();return;}
+  if(k==="ArrowRight"){ev.preventDefault(); sel.dir="across"; move(0,1); return;}
+  if(k==="ArrowLeft"){ev.preventDefault(); sel.dir="across"; move(0,-1); return;}
+  if(k==="ArrowDown"){ev.preventDefault(); sel.dir="down"; move(1,0); return;}
+  if(k==="ArrowUp"){ev.preventDefault(); sel.dir="down"; move(-1,0); return;}
+  if(k==="Backspace"){ev.preventDefault();
+    if(user[sel.r+","+sel.c]){setLetter(sel.r,sel.c,"");} else {step(false); setLetter(sel.r,sel.c,"");}
+    return;}
+  if(/^[a-zA-Z]$/.test(k)){ev.preventDefault();
+    setLetter(sel.r,sel.c,k.toUpperCase()); step(true); return;}
+});
+
+document.getElementById("bDir").onclick=toggleDir;
+document.getElementById("bClear").onclick=()=>{
+  if(!confirm("Clear all your answers?"))return;
+  user={}; save();
+  document.querySelectorAll(".cell .ltr").forEach(s=>s.textContent="");
+  document.querySelectorAll(".cell").forEach(d=>d.classList.remove("wrong"));
+  setStatus("");
+};
+document.getElementById("bReveal").onclick=()=>{
+  if(!confirm("Reveal the full solution?"))return;
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++) if(GRID[r][c]!==null) setLetter(r,c,GRID[r][c]);
+  setStatus("Solution revealed.");
+};
+document.getElementById("bCheck").onclick=()=>{
+  let wrong=0, filled=0, total=0;
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    if(GRID[r][c]===null)continue; total++;
+    const d=cell(r,c), v=user[r+","+c]||"";
+    d.classList.remove("wrong");
+    if(v)filled++;
+    if(v&&v!==GRID[r][c]){d.classList.add("wrong");wrong++;}
+  }
+  if(filled===total&&wrong===0) setStatus("🎉 Solved! Every square is correct.");
+  else if(wrong===0) setStatus(`So far so good — ${total-filled} square${total-filled===1?"":"s"} left.`);
+  else setStatus(`${wrong} incorrect square${wrong===1?"":"s"} marked.`);
+};
+function setStatus(t){document.getElementById("status").textContent=t;}
+
+function save(){try{localStorage.setItem(KEY,JSON.stringify(user));}catch(e){}}
+function restore(){try{const s=localStorage.getItem(KEY); if(s)user=JSON.parse(s);}catch(e){user={};}}
+
+// ---- load crossword.json, with file-picker fallback for file:// ----
+fetch("crossword.json").then(r=>{if(!r.ok)throw 0;return r.json()})
+  .then(loadData)
+  .catch(()=>{
+    document.getElementById("loader").classList.remove("hidden");
+    document.getElementById("file").addEventListener("change",ev=>{
+      const f=ev.target.files[0]; if(!f)return;
+      const fr=new FileReader();
+      fr.onload=()=>{try{loadData(JSON.parse(fr.result));}catch(e){alert("Invalid JSON: "+e);}};
+      fr.readAsText(f);
+    });
+  });
+</script>
+</body>
+</html>

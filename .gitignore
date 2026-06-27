@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# Generated puzzle output (people build their own)
+*-crossword/
+*-puzzle/
+solution.json
+clues.json
+crossword.json
+
+# OS / editor cruft
+.DS_Store
+*.swp

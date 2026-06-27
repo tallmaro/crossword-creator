@@ -1,0 +1,21 @@
+{
+  "name": "crossword-creator",
+  "owner": {
+    "name": "Mariam Alavidze"
+  },
+  "metadata": {
+    "description": "Build real, solvable themed crossword puzzles with Claude Code",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "crossword-creator",
+      "description": "Build a real, solvable crossword puzzle on any theme — a symmetric grid where every Across and Down answer is a genuine word, plus hand-written clues, delivered as structured JSON and an interactive HTML player.",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/crossword-creator"
+      ]
+    }
+  ]
+}
