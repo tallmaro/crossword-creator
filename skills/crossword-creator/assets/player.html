@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Austen's Leading Hearts — crossword</title>
+<title>Crossword</title>
 <style>
   :root{
     --cell: 38px; --line:#222; --black:#1a1a1a; --hl:#a7d8ff; --cur:#ffd54a;
@@ -103,6 +103,7 @@ function loadData(data){
   GRID = P.grid; NUMS = P.gridnums;
   ACROSS = P.clues.across; DOWN = P.clues.down;
   document.getElementById("title").textContent = P.title;
+  document.title = (P.title ? P.title + " — " : "") + "crossword";   // browser tab
   document.getElementById("meta").textContent =
       (P.theme ? P.theme + " · " : "") + (P.difficulty||"") + " · " +
       (ACROSS.length+DOWN.length) + " words";
