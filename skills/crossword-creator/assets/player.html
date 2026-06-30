@@ -278,20 +278,6 @@ function step(forward){
   sel.c=sel.dir==="across"?e.col+i:e.col;
   paint(); return true;
 }
-// After typing, move to the next BLANK square in the word (skip ones already
-// filled by crossings); wrap to earlier gaps so you fill the whole word.
-function advanceInWord(){
-  const e=activeEntry(); if(!e) return;
-  const here=sel.dir==="across"? sel.c-e.col : sel.r-e.row;
-  const order=[];
-  for(let j=here+1;j<e.len;j++) order.push(j);
-  for(let j=0;j<here;j++) order.push(j);
-  for(const j of order){
-    const r=sel.dir==="across"?e.row:e.row+j, c=sel.dir==="across"?e.col+j:e.col;
-    if(!user[r+","+c]){ sel.r=r; sel.c=c; paint(); return; }
-  }
-  step(true);                               // word full → nudge forward
-}
 function move(dr,dc){
   let r=sel.r+dr,c=sel.c+dc;
   while(r>=0&&r<N&&c>=0&&c<N){ if(GRID[r][c]!==null){selectCell(r,c,sel.dir);return;} r+=dr;c+=dc; }
@@ -342,7 +328,7 @@ addEventListener("keydown",ev=>{
     setLetter(sel.r,sel.c,k.toUpperCase());
     const e=activeEntry();
     if(e && isFilled(e,sel.dir)) gotoNextUnfilled();   // word done → jump onward
-    else advanceInWord();                              // else next blank in the word
+    else step(true);                                   // else next square (NYT default: no skip)
     checkWin();
     return; }
 });
