@@ -282,59 +282,54 @@ function move(dr,dc){
   let r=sel.r+dr,c=sel.c+dc;
   while(r>=0&&r<N&&c>=0&&c<N){ if(GRID[r][c]!==null){selectCell(r,c,sel.dir);return;} r+=dr;c+=dc; }
 }
-function orderedClues(dir){ return dir==="across"?ACROSS:DOWN; }
-function gotoAdjacentClue(delta){
-  const e=activeEntry(); if(!e) return;
-  const list=orderedClues(sel.dir);
-  let idx=list.findIndex(x=>x.num===e.num);
-  idx=(idx+delta+list.length)%list.length;
-  const t=list[idx]; selectEntry(t,sel.dir);
-}
-function gotoNextUnfilled(){
-  // search forward from the current clue in this direction, then the other,
-  // landing on the first clue that still has an empty cell.
-  const dirs=[sel.dir, sel.dir==="across"?"down":"across"];
-  const cur=activeEntry();
-  for(const dir of dirs){
-    const list=orderedClues(dir);
-    const startNum = (dir===sel.dir && cur) ? cur.num : -1;
-    const startIdx = startNum>=0 ? list.findIndex(x=>x.num===startNum) : -1;
-    for(let k=1;k<=list.length;k++){
-      const e=list[(startIdx+k+list.length)%list.length];
-      if(!isFilled(e,dir)){
-        // jump to that clue's first empty cell
-        const empties=entryCells(e,dir).filter(([r,c])=>!user[r+","+c]);
-        const [r,c]=empties[0]||entryCells(e,dir)[0];
-        selectCell(r,c,dir); return;
-      }
-    }
+// All clues in solving order: every Across (by number), then every Down.
+function cluesInOrder(){ return ACROSS.map(e=>[e,"across"]).concat(DOWN.map(e=>[e,"down"])); }
+// Move to the next/previous clue (delta ±1). When skipFilled, hop over clues
+// that are already complete (Tab/Enter); otherwise step one at a time (clue-bar
+// arrows). Land on the clue's first blank square. Wraps Across→Down→Across.
+function gotoClue(delta, skipFilled){
+  const list=cluesInOrder(), n=list.length, e=activeEntry();
+  let idx=list.findIndex(([x,d])=>e && x.num===e.num && d===sel.dir);
+  if(idx<0) idx=0;
+  for(let k=1;k<=n;k++){
+    const [x,d]=list[((idx+delta*k)%n+n)%n];
+    if(!skipFilled || !isFilled(x,d)){ selectEntry(x,d); return; }
   }
+  const [x,d]=list[((idx+delta)%n+n)%n]; selectEntry(x,d);   // everything filled
+}
+// Arrow keys: a perpendicular arrow switches direction in place (stay-and-switch,
+// NYT/DFAC); pressing again then moves. A parallel arrow moves one white cell.
+function arrowKey(axis,dr,dc){
+  const info=cellOf[sel.r+","+sel.c]||{};
+  const hasWord=(axis==="across"&&info.acrossEntry)||(axis==="down"&&info.downEntry);
+  if(sel.dir!==axis && hasWord){ sel.dir=axis; paint(); return; }
+  sel.dir=axis; move(dr,dc);
 }
 
 addEventListener("keydown",ev=>{
   if(document.getElementById("app").classList.contains("hidden")) return;
   const k=ev.key;
-  if(k==="Tab"){ ev.preventDefault(); gotoAdjacentClue(ev.shiftKey?-1:1); return; }
+  if(k==="Tab"){ ev.preventDefault(); gotoClue(ev.shiftKey?-1:1, true); return; }
+  if(k==="Enter"){ ev.preventDefault(); gotoClue(1, true); return; }
   if(k===" "){ ev.preventDefault(); toggleDir(); return; }
-  if(k==="Enter"){ ev.preventDefault(); gotoNextUnfilled(); return; }
-  if(k==="ArrowRight"){ ev.preventDefault(); sel.dir="across"; move(0,1); return; }
-  if(k==="ArrowLeft"){ ev.preventDefault(); sel.dir="across"; move(0,-1); return; }
-  if(k==="ArrowDown"){ ev.preventDefault(); sel.dir="down"; move(1,0); return; }
-  if(k==="ArrowUp"){ ev.preventDefault(); sel.dir="down"; move(-1,0); return; }
+  if(k==="ArrowRight"){ ev.preventDefault(); arrowKey("across",0,1); return; }
+  if(k==="ArrowLeft"){ ev.preventDefault(); arrowKey("across",0,-1); return; }
+  if(k==="ArrowDown"){ ev.preventDefault(); arrowKey("down",1,0); return; }
+  if(k==="ArrowUp"){ ev.preventDefault(); arrowKey("down",-1,0); return; }
   if(k==="Backspace"){ ev.preventDefault();
-    if(user[sel.r+","+sel.c]) setLetter(sel.r,sel.c,""); else { if(step(false)) setLetter(sel.r,sel.c,""); }
+    if(user[sel.r+","+sel.c]) setLetter(sel.r,sel.c,"");    // letter present → delete in place
+    else if(step(false)) setLetter(sel.r,sel.c,"");         // empty → step back and delete
     return; }
+  if(k==="Delete"){ ev.preventDefault(); setLetter(sel.r,sel.c,""); return; }   // clear, stay
   if(/^[a-zA-Z]$/.test(k)){ ev.preventDefault();
     setLetter(sel.r,sel.c,k.toUpperCase());
-    const e=activeEntry();
-    if(e && isFilled(e,sel.dir)) gotoNextUnfilled();   // word done → jump onward
-    else step(true);                                   // else next square (NYT default: no skip)
+    step(true);            // advance one square within the word; no auto clue-jump
     checkWin();
     return; }
 });
 
-document.getElementById("prevClue").onclick=()=>gotoAdjacentClue(-1);
-document.getElementById("nextClue").onclick=()=>gotoAdjacentClue(1);
+document.getElementById("prevClue").onclick=()=>gotoClue(-1,false);
+document.getElementById("nextClue").onclick=()=>gotoClue(1,false);
 
 function isSolved(){
   for(let r=0;r<N;r++)for(let c=0;c<N;c++)
