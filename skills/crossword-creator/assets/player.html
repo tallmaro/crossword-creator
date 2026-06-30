@@ -256,10 +256,9 @@ function paint(){
 
 function setLetter(r,c,ch){
   if(ch) user[r+","+c]=ch; else delete user[r+","+c];
-  const d=cell(r,c); if(d) d.querySelector(".ltr").textContent=ch;
-  // A Check is a snapshot; editing invalidates it. Clear every mark so none
-  // can linger on a cell that's since become correct (or that you changed).
-  document.querySelectorAll(".cell.wrong,.cell.right").forEach(x=>x.classList.remove("wrong","right"));
+  // Clear the check-mark on ONLY this square (changing a letter shouldn't wipe
+  // the rest of the checked word — NYT clears just the square you edit).
+  const d=cell(r,c); if(d){ d.querySelector(".ltr").textContent=ch; d.classList.remove("wrong","right"); }
   save();
 }
 function entryCells(e,dir){
