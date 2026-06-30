@@ -199,7 +199,7 @@ function buildClueLists(){
       const li=document.createElement("li");
       li.dataset.num=e.num; li.dataset.dir=dir;
       li.innerHTML=`<span class="n">${e.num}</span><span>${esc(e.clue)}</span>`;
-      li.addEventListener("click",()=>selectCell(e.row,e.col,dir));
+      li.addEventListener("click",()=>selectEntry(e,dir));
       ol.appendChild(li);
     }
   }
@@ -223,6 +223,16 @@ function toggleDir(){
   if((other==="across"&&info.acrossEntry)||(other==="down"&&info.downEntry)) sel.dir=other;
   paint();
 }
+function firstEmptyOf(e,dir){               // first blank square of an entry, else its start
+  for(let i=0;i<e.len;i++){
+    const r=dir==="across"?e.row:e.row+i, c=dir==="across"?e.col+i:e.col;
+    if(!user[r+","+c]) return [r,c];
+  }
+  return [e.row,e.col];
+}
+// Selecting a WORD (clue click, Tab, arrows in the bar) lands on its first
+// blank square — not on a letter a crossing already filled in.
+function selectEntry(e,dir){ const [r,c]=firstEmptyOf(e,dir); selectCell(r,c,dir); }
 function cell(r,c){return document.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);}
 
 function paint(){
@@ -268,6 +278,20 @@ function step(forward){
   sel.c=sel.dir==="across"?e.col+i:e.col;
   paint(); return true;
 }
+// After typing, move to the next BLANK square in the word (skip ones already
+// filled by crossings); wrap to earlier gaps so you fill the whole word.
+function advanceInWord(){
+  const e=activeEntry(); if(!e) return;
+  const here=sel.dir==="across"? sel.c-e.col : sel.r-e.row;
+  const order=[];
+  for(let j=here+1;j<e.len;j++) order.push(j);
+  for(let j=0;j<here;j++) order.push(j);
+  for(const j of order){
+    const r=sel.dir==="across"?e.row:e.row+j, c=sel.dir==="across"?e.col+j:e.col;
+    if(!user[r+","+c]){ sel.r=r; sel.c=c; paint(); return; }
+  }
+  step(true);                               // word full → nudge forward
+}
 function move(dr,dc){
   let r=sel.r+dr,c=sel.c+dc;
   while(r>=0&&r<N&&c>=0&&c<N){ if(GRID[r][c]!==null){selectCell(r,c,sel.dir);return;} r+=dr;c+=dc; }
@@ -278,7 +302,7 @@ function gotoAdjacentClue(delta){
   const list=orderedClues(sel.dir);
   let idx=list.findIndex(x=>x.num===e.num);
   idx=(idx+delta+list.length)%list.length;
-  const t=list[idx]; selectCell(t.row,t.col,sel.dir);
+  const t=list[idx]; selectEntry(t,sel.dir);
 }
 function gotoNextUnfilled(){
   // search forward from the current clue in this direction, then the other,
@@ -318,7 +342,7 @@ addEventListener("keydown",ev=>{
     setLetter(sel.r,sel.c,k.toUpperCase());
     const e=activeEntry();
     if(e && isFilled(e,sel.dir)) gotoNextUnfilled();   // word done → jump onward
-    else step(true);
+    else advanceInWord();                              // else next blank in the word
     checkWin();
     return; }
 });
